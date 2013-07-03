@@ -1,5 +1,3 @@
-if window.HandmadeCookie
-  return
 unless window.JSON
   window.JSON =
     parse: (sJSON) ->
@@ -168,4 +166,20 @@ HandmadeCookie.check2clean = (precision = 24 * 60 * 60, cond = 30) ->
     )(value, key)
    @
 
-window.HandmadeCookie = HandmadeCookie
+###################################
+#     Exposing HandmadeCookie
+###################################
+
+# CommonJS module is defined
+module.exports = HandmadeCookie if @hasModule
+
+#global ender:false 
+# here, `this` means `window` in the browser, or `global` on the server
+# add `HandmadeCookie` as a global object via a string identifier,
+# for Closure Compiler "advanced" mode
+@HandmadeCookie = HandmadeCookie  if typeof ender is "undefined"
+
+#global define:false 
+if typeof define is "function" and define.amd
+  define "HandmadeCookie", [], ->
+    HandmadeCookie
