@@ -44,8 +44,8 @@ docCookies =
 
 storageControl = if localStorage then localStorage else docCookies
 storage = {}
-HandmadeCookie = (options) ->
-  _toString = Object.prototype.toString
+HandmadeCookie = (options, isInit) ->
+  _toString = Object::toString
   opts = options || {}
   theCookie = this
   # extend opts
@@ -54,31 +54,52 @@ HandmadeCookie = (options) ->
       cond = _toString.call(val) is _toString.call(newVal)
       opts[key] = if cond then newVal else val
     )(key, value, opts[key])
+
+  onUpdate = opts.onUpdate
+  opts.onUpdate = (isUpdate, newData, oldData) ->
+    ( newData.times is 1 ) and newData.lastDate = oldData.today
+    newData.times = if isUpdate then ++newData.times else newData.times
+    onUpdate(isUpdate, newData, oldData)
+
   if storage[opts.name]
     return storage[opts.name]
   data = storageControl.getItem opts.name
   storage[opts.name] = @
   @options = opts
-  @update()
+  isInit and @update()
+  @
 
 HandmadeCookie.prototype =
   constructor: HandmadeCookie
+  toJson: ->
+    JSON.parse storageControl.getItem @options.name
   get: (attr='') ->
     data = JSON.parse storageControl.getItem @options.name
     if typeof data[attr] isnt "undefined" then data[attr] else undefined
-  update: (date = new Date()) ->
+  update: (vals = {}, date = new Date()) ->
     options = @options
     oldData = JSON.parse storageControl.getItem options.name
-    beUpdate = true
+    beUpdate = false
     newData = {}
-    _toString = Object.prototype.toString
+    _toString = Object::toString
+    hasOwnProperty = Object::hasOwnProperty
+
+    isEmpty = (obj) ->
+      return true  unless obj?
+      return false  if obj.length and obj.length > 0
+      return true  if obj.length is 0
+      for key of obj
+        return false  if hasOwnProperty.call(obj, key)
+      true
+
     if oldData
-      newData = options.parse(date)
-      beUpdate = options.cond(oldData, newData, options.precision)
-      data = newData
+      newData = @parse(date)
+      beUpdate = options.cond(oldData, newData, options.precision) or !isEmpty(vals)
     else
-      oldData = options.parse(date)
+      oldData = @parse(date)
       data = oldData
+      data.times = 1
+
     if beUpdate
       data = {}
       for key, value of oldData
@@ -86,9 +107,18 @@ HandmadeCookie.prototype =
           cond = _toString.call(val) is _toString.call(newVal)
           data[key] = if cond then newVal else val
         )(key, value, newData[key])
+      data.lastDate = oldData.today
+      for key, value of vals
+        ((key, val) ->
+          data[key] = val
+        )(key, value)
+    else
+      data = oldData
     data = options.onUpdate beUpdate, data, oldData
     storageControl.setItem options.name, JSON.stringify( data )
     beUpdate
+  parse: (date = new Date()) ->
+    today: Math.floor( date.getTime() / 1000 )
   clear: () ->
     name = @options.name
     storageControl.removeItem name
@@ -97,18 +127,45 @@ HandmadeCookie.prototype =
 
 HandmadeCookie.defaults =
   name: "visitInfo"
-  precision: 24 * 60 * 60
-  parse: (date = new Date()) ->
-    today: Math.floor( date.getTime() / 1000 )
+  precision: 24 * 60 * 60 # sec
   cond: (oldData, newData, precision) ->
     oldToday = Math.floor( oldData.today / precision )
     newToday = Math.floor( newData.today / precision )
     oldToday isnt newToday
   onUpdate: (isUpdate, newData, oldData) ->
-    newData.times and newData.lastDate = oldData.today
-    newData.times = if isUpdate then ++newData.times else 1
     newData
 HandmadeCookie.get = (name) ->
   if storage[name] then storage[name] else null
+HandmadeCookie.pluck = ->
+  result = []
+  for key, value of storage
+    result.push key
+  result
+HandmadeCookie.register = (name, data) ->
+  if !name or !data
+    return false
+  result = HandmadeCookie.get(name)
+  if !result and storageControl.getItem(name)
+    _toString = Object::toString
+    unixToday = Math.floor( new Date().getTime() / 1000 )
+    data =
+      val: data
+      today: unixToday
+      lastDate: unixToday
+      times: 1
+    storageControl.setItem(name, JSON.stringify(data))
+    options =
+      name: name
+    result = new HandmadeCookie(options)
+  result
+HandmadeCookie.check2clean = (precision = 24 * 60 * 60, cond = 30) ->
+  for key, value of storage
+    ((perStorge, key)->
+      lastDate = perStorge.get("lastDate")
+      lastDate = Math.floor( lastDate / precision )
+      realToday = Math.floor( new Date().getTime() / precision / 1000 )
+      ( realToday - lastDate > cond ) and perStorge.clear()
+    )(value, key)
+   @
 
 window.HandmadeCookie = HandmadeCookie
