@@ -64,7 +64,7 @@ HandmadeCookie = (options, isInit) ->
   data = storageControl.getItem opts.name
   storage[opts.name] = @
   @options = opts
-  isInit and @update()
+  isInit and @update(opts.data)
   @
 
 HandmadeCookie.prototype =
@@ -92,7 +92,7 @@ HandmadeCookie.prototype =
 
     if oldData
       newData = @parse(date)
-      beUpdate = options.cond(oldData, newData, options.precision) or !isEmpty(vals)
+      beUpdate = @cond(oldData, newData, options.precision) or !isEmpty(vals)
     else
       oldData = @parse(date)
       data = oldData
@@ -112,12 +112,21 @@ HandmadeCookie.prototype =
         )(key, value)
     else
       data = oldData
+      if !isEmpty vals
+        for key, value of vals
+          ((key, val) ->
+            data[key] = val
+          )(key, value)
     data = options.onUpdate beUpdate, data, oldData
     storageControl.setItem options.name, JSON.stringify( data )
     beUpdate
   parse: (date = new Date()) ->
     today: Math.floor( date.getTime() / 1000 )
-  clear: () ->
+  cond: (oldData, newData, precision) ->
+    oldToday = Math.floor( oldData.today / precision )
+    newToday = Math.floor( newData.today / precision )
+    oldToday isnt newToday
+  die: () ->
     name = @options.name
     storageControl.removeItem name
     storage[name] and (delete storage[name])
@@ -126,10 +135,7 @@ HandmadeCookie.prototype =
 HandmadeCookie.defaults =
   name: "visitInfo"
   precision: 24 * 60 * 60 # sec
-  cond: (oldData, newData, precision) ->
-    oldToday = Math.floor( oldData.today / precision )
-    newToday = Math.floor( newData.today / precision )
-    oldToday isnt newToday
+  data: {}
   onUpdate: (isUpdate, newData, oldData) ->
     newData
 HandmadeCookie.get = (name) ->
@@ -146,23 +152,24 @@ HandmadeCookie.register = (name, data) ->
   if !result and storageControl.getItem(name)
     _toString = Object::toString
     unixToday = Math.floor( new Date().getTime() / 1000 )
-    data =
-      val: data
-      today: unixToday
-      lastDate: unixToday
-      times: 1
-    storageControl.setItem(name, JSON.stringify(data))
+    if !data.today
+      data =
+        val: data
+        today: unixToday
+        lastDate: unixToday
+        times: 1
+      storageControl.setItem(name, JSON.stringify(data))
     options =
       name: name
     result = new HandmadeCookie(options)
   result
-HandmadeCookie.check2clean = (precision = 24 * 60 * 60, cond = 30) ->
+HandmadeCookie.check2clean = (precision = 24 * 60 * 60, cond = 0) ->
   for key, value of storage
     ((perStorge, key)->
       lastDate = perStorge.get("lastDate")
       lastDate = Math.floor( lastDate / precision )
       realToday = Math.floor( new Date().getTime() / precision / 1000 )
-      ( realToday - lastDate > cond ) and perStorge.clear()
+      ( realToday - lastDate >= cond ) and perStorge.die()
     )(value, key)
    @
 

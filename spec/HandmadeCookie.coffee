@@ -9,7 +9,7 @@ describe "Testing HandmadeCookie", ->
   )
 
   afterEach(->
-    HandmadeCookie.check2clean(1, 1)
+    HandmadeCookie.check2clean(1)
   )
 
   it "should be registered", ->
@@ -17,7 +17,7 @@ describe "Testing HandmadeCookie", ->
 
   it "should get empty array without registered", ->
     check2clean = ->
-      HandmadeCookie.check2clean(1, 1)
+      HandmadeCookie.check2clean(1)
       HandmadeCookie.pluck().length
     waitsFor(->
       !check2clean()
@@ -28,11 +28,9 @@ describe "Testing HandmadeCookie", ->
     expect(pluck.length).toBe(1)
     expect(/demo/.test( pluck.join() )).toBe(true)
 
-  it "should get null if data not found", ->
+  it "should get data if registered", ->
     data = HandmadeCookie.get("tmp")
     expect(data).toBe(null)
-
-  it "should get registered instance", ->
     demo = HandmadeCookie.get("demo")
     expect(demo.constructor is HandmadeCookie).toBe(true)
 
@@ -56,7 +54,7 @@ describe "Testing HandmadeCookie", ->
     )
     expect(registered).toBe(null)
 
-  it "should registered if exist and in localStorage", ->
+  it "should register with different format from HandmadeCookie if in localStorage", ->
     storageControl = if localStorage then localStorage else docCookies
     data = JSON.stringify(
       "string": "string"
@@ -73,14 +71,38 @@ describe "Testing HandmadeCookie", ->
     expect(registered.get("times")).toEqual(1)
     expect(registered.get("today")).toEqual(registered.get("lastDate"))
 
+  it "should register with same format as HandmadeCookie if in localStorage", ->
+    storageControl = if localStorage then localStorage else docCookies
+    date = Math.floor( new Date().getTime() / 1000 )
+    data = JSON.stringify(
+      "today": date
+      "lastDate": date
+      "times": 1
+      "val":
+        "string": "string"
+        "number": 123
+        "array": [1..5]
+      "val2": "other data"
+    )
+    storageControl.setItem "register", data
+    registered = HandmadeCookie.register("register", JSON.parse(data))
+    expect(registered.constructor is HandmadeCookie).toBe(true)
+    val = registered.get("val")
+    expect(val["string"]).toEqual("string")
+    expect(val["number"]).toEqual(123)
+    expect(val["array"]).toEqual([1, 2, 3, 4, 5])
+    expect(registered.get("val2")).toEqual("other data")
+    expect(registered.get("times")).toEqual(1)
+    expect(registered.get("today")).toEqual(registered.get("lastDate"))
+
   it "shouldn't clear if condition is false", ->
-    HandmadeCookie.check2clean()
+    HandmadeCookie.check2clean(undefined, 100)
     pluck = HandmadeCookie.pluck()
     expect(/demo/.test( pluck.join() )).toBe(true)
 
   it "should clear if condition is true", ->
     check2clean = ->
-      HandmadeCookie.check2clean(1, 1)
+      HandmadeCookie.check2clean(1)
       pluck = HandmadeCookie.pluck()
       /demo/.test( pluck.join() )
     waitsFor(->
@@ -94,7 +116,7 @@ describe "Testing HandmadeCookie instance", ->
     storageControl = if localStorage then localStorage else docCookies
   )
   afterEach(->
-    HandmadeCookie.check2clean(1, 1)
+    HandmadeCookie.check2clean(1)
   )
 
   it "should have correct constructor", ->
@@ -105,7 +127,21 @@ describe "Testing HandmadeCookie instance", ->
     demo = HandmadeCookie.get("demo")
     expect(demo.constructor is HandmadeCookie).toBe(true)
 
-  it "should have correct init values", ->
+  it "should have onUpdate and work on", ->
+    options = {
+      name: "demo"
+      precision: 5
+      onUpdate: (isUpdated, newData) ->
+        expect("onUpdate").toBe("onUpdate")
+        newData
+    }
+    demo = new HandmadeCookie(options, "init")
+    isUpdated = demo.update(
+      "newVal": "This is a new value"
+    )
+    expect(isUpdated).toEqual(true)
+
+  it "should have correct init values without options.data", ->
     new HandmadeCookie(
       name: "demo",
       precision: 5
@@ -116,6 +152,22 @@ describe "Testing HandmadeCookie instance", ->
     expect(demo.times).toEqual(1)
     expect(typeof demo.today).toEqual("number")
     expect(demo.today).toEqual(demo.lastDate)
+
+  it "should have correct init values with options.data", ->
+    new HandmadeCookie(
+      name: "demo",
+      precision: 5,
+      data: {
+        test: 123
+      }
+    , "init")
+    demo = storageControl.getItem("demo")
+    expect(demo).not.toEqual(null)
+    demo = JSON.parse(demo)
+    expect(demo.times).toEqual(1)
+    expect(typeof demo.today).toEqual("number")
+    expect(demo.today).toEqual(demo.lastDate)
+    expect(demo.test).toEqual(123)
 
   it "doesn't init again if initialized", ->
     new HandmadeCookie(
@@ -179,23 +231,21 @@ describe "Testing HandmadeCookie instance", ->
       name: "demo",
       precision: 600
     , "init")
-    expect(demo.get("times")).toEqual(1)
     expect(demo.get("newVal")).toEqual(undefined)
     isUpdated = demo.update(
       "newVal": "This is a new value"
     )
     expect(isUpdated).toEqual(true)
-    expect(demo.get("times")).toEqual(2)
     expect(demo.get("newVal")).toEqual("This is a new value")
     isUpdated = demo.update(
       "newVal": "Update the value"
     )
     expect(isUpdated).toEqual(true)
-    expect(demo.get("times")).toEqual(3)
     expect(demo.get("newVal")).not.toEqual("This is a new value")
     expect(demo.get("newVal")).toEqual("Update the value")
+    expect(demo.get("times")).toEqual(3)
 
-  it "should be removed after clear", ->
+  it "should be removed after die", ->
     demo = new HandmadeCookie(
       name: "demo",
       precision: 5
@@ -211,7 +261,7 @@ describe "Testing HandmadeCookie instance", ->
     expect(storageControl.getItem("demo")).not.toEqual(null)
     pluck = HandmadeCookie.pluck()
     expect(/demo/.test( pluck.join() )).toBe(true)
-    demo.clear()
+    demo.die()
     pluck = HandmadeCookie.pluck()
     expect(storageControl.getItem("demo")).toEqual(null)
     expect(/demo/.test( pluck.join() )).toBe(false)
